@@ -1,70 +1,65 @@
 #!/usr/bin/env python3
 import rospy
-from test.msg import ControlState  # Reemplaza con el nombre de tu paquete
+from sensor_msgs.msg import Joy  # Importar el mensaje Joy
 import pygame
 
-def main():
-    # Inicializar pygame
-    pygame.init()
-    pygame.joystick.init()
+class ControlNode:
+    def __init__(self):
+        # Inicializar pygame
+        pygame.init()
+        pygame.joystick.init()
 
-    # Verificar si hay controladores conectados
-    if pygame.joystick.get_count() == 0:
-        rospy.logerr("No se encontró ningún controlador.")
-        return
+        # Verificar si hay controladores conectados
+        if pygame.joystick.get_count() == 0:
+            rospy.logerr("No se encontró ningún controlador.")
+            return
 
-    # Obtener el primer controlador
-    joystick = pygame.joystick.Joystick(0)
-    joystick.init()
+        # Obtener el primer controlador
+        self.joystick = pygame.joystick.Joystick(0)
+        self.joystick.init()
 
-    rospy.loginfo(f"Controlador conectado: {joystick.get_name()}")
+        rospy.loginfo(f"Controlador conectado: {self.joystick.get_name()}")
 
-    # Inicializar el nodo ROS
-    rospy.init_node('control', anonymous=True)
-    pub = rospy.Publisher('control_state', ControlState, queue_size=10)
-    rate = rospy.Rate(10)  # 10 Hz
+        # Inicializar el nodo ROS
+        rospy.init_node('control', anonymous=True)
+        self.pub = rospy.Publisher('control_state', Joy, queue_size=10)
+        self.rate = rospy.Rate(10)  # 10 Hz
 
-    # Variables para almacenar el estado anterior
-    prev_axes = []
-    prev_buttons = []
-    prev_hat = []
+        # Variables para almacenar el estado anterior
+        self.prev_axes = []
+        self.prev_buttons = []
 
-    try:
-        while not rospy.is_shutdown():
-            # Crear un mensaje ROS
-            msg = ControlState()
+    def run(self):
+        try:
+            while not rospy.is_shutdown():
+                # Crear un mensaje ROS
+                msg = Joy()
 
-            # Leer los ejes
-            msg.axes = [round(joystick.get_axis(i)*10,3) for i in range(joystick.get_numaxes())]
+                # Leer los ejes
+                msg.axes = [round(self.joystick.get_axis(i)*10,3) for i in range(self.joystick.get_numaxes())]
 
-            # Leer los botones
-            msg.buttons = [joystick.get_button(i) for i in range(joystick.get_numbuttons())]
+                # Leer los botones
+                msg.buttons = [self.joystick.get_button(i) for i in range(self.joystick.get_numbuttons())]
 
-            # Leer el D-Pad (sombrero)
-            if joystick.get_numhats() > 0:
-                msg.hat = list(joystick.get_hat(0))
-            else:
-                msg.hat = [0, 0]
+                # Publicar solo si hay cambios
+                if msg.axes != self.prev_axes or msg.buttons != self.prev_buttons:
+                    self.pub.publish(msg)
+                    rospy.loginfo(f"Publicado: {msg}")
 
-            # Publicar solo si hay cambios
-            if msg.axes != prev_axes or msg.buttons != prev_buttons or msg.hat != prev_hat:
-                pub.publish(msg)
-                rospy.loginfo(f"Publicado: {msg}")
+                    # Actualizar el estado anterior
+                    self.prev_axes = msg.axes
+                    self.prev_buttons = msg.buttons
 
-                # Actualizar el estado anterior
-                prev_axes = msg.axes
-                prev_buttons = msg.buttons
-                prev_hat = msg.hat
+                # Procesar eventos de pygame
+                pygame.event.pump()
+                self.rate.sleep()
 
-            # Procesar eventos de pygame
-            pygame.event.pump()
-            rate.sleep()
-
-    except rospy.ROSInterruptException:
-        rospy.loginfo("Programa terminado.")
-    finally:
-        # Cerrar pygame
-        pygame.quit()
+        except rospy.ROSInterruptException:
+            rospy.loginfo("Programa terminado.")
+        finally:
+            # Cerrar pygame
+            pygame.quit()
 
 if __name__ == "__main__":
-    main()
+    node = ControlNode()
+    node.run()
